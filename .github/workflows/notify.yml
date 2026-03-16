@@ -1,4 +1,4 @@
-name: Blog Notify
+name: Blog Notify v2
 
 on:
   schedule:
