@@ -114,17 +114,10 @@ def send_discord(article, mode):
         text = "【紳士の隠れ家】新しいブログが公開されました！"
 
     payload = {
-        "content": text,
-        "embeds": [
-            {
-                "title": article["title"],
-                "url": article["link"],
-                "description": article["pub_date"],
-            }
-        ]
+        "content": f"{text}\n{article['link']}"
     }
 
-    requests.post(DISCORD_WEBHOOK_URL, json=payload)
+    requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=20)
 
 
 def main():
