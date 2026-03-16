@@ -108,9 +108,9 @@ def parse_rss_items(rss_text):
 
 def send_discord(article, mode):
 
-    text = "記事が更新されました"
+    text = "【紳士の隠れ家】ブログが更新されました！"
     if mode == "new":
-        text = "新しい記事が公開されました"
+        text = "【紳士の隠れ家】新しいブログが公開されました！"
 
     payload = {
         "content": text,
