@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import xml.etree.ElementTree as ET
+import time
 
 import requests
 
@@ -159,6 +160,7 @@ def main():
 
     for item, mode in notifications:
         send_discord(item, mode)
+        time.sleep(1)
 
 
 if __name__ == "__main__":
