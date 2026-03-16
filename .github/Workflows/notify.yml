@@ -1,0 +1,36 @@
+name: Blog Notify
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  notify:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install -r requirements.txt
+
+      - run: python notify.py
+        env:
+          RSS_URL: ${{ secrets.RSS_URL }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+
+      - run: |
+          git config user.name bot
+          git config user.email bot@example.com
+          git add state.json
+          git diff --cached --quiet || git commit -m update
+          git push
