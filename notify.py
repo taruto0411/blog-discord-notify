@@ -1,9 +1,7 @@
-import hashlib
 import json
 import os
 from pathlib import Path
 import xml.etree.ElementTree as ET
-import time
 
 import requests
 
@@ -18,7 +16,7 @@ def load_state():
         try:
             return json.loads(STATE_FILE.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
-            return {"items": {}}
+            pass
     return {"items": {}}
 
 
@@ -49,15 +47,6 @@ def child_text(element, names):
     return ""
 
 
-def collect_texts(element, names):
-    texts = []
-    for child in element:
-        tag_name = strip_tag(child.tag)
-        if tag_name in names:
-            texts.append((child.text or "").strip())
-    return texts
-
-
 def parse_rss_items(rss_text):
     root = ET.fromstring(rss_text)
 
@@ -67,6 +56,9 @@ def parse_rss_items(rss_text):
             channel = child
             break
 
+    if channel is None:
+        raise ValueError("RSSのchannelが見つかりませんでした。")
+
     items = []
     for child in channel:
         if strip_tag(child.tag) != "item":
@@ -74,86 +66,72 @@ def parse_rss_items(rss_text):
 
         title = child_text(child, {"title"}) or "無題"
         link = child_text(child, {"link"})
-        guid = child_text(child, {"guid"})
-        pub_date = child_text(child, {"pubDate", "published", "updated"})
-        description = child_text(child, {"description", "summary"})
-        content_list = collect_texts(child, {"encoded", "content"})
-        content = "\n".join(t for t in content_list if t)
+        pub_date = child_text(child, {"pubDate"})
 
-        item_id = guid or link
-        if not item_id:
+        if not link:
             continue
 
-        fingerprint_source = "\n".join([
-            title,
-            link,
-            pub_date,
-            description,
-            content,
-        ])
-
-        fingerprint = hashlib.sha256(
-            fingerprint_source.encode("utf-8")
-        ).hexdigest()
-
         items.append({
-            "id": item_id,
+            "id": link,
             "title": title,
             "link": link,
             "pub_date": pub_date,
-            "fingerprint": fingerprint,
         })
 
     return items
 
 
 def send_discord(article, mode):
-
-    text = "【紳士の隠れ家】ブログが更新されました！"
     if mode == "new":
         text = "【紳士の隠れ家】新しいブログが公開されました！"
+    else:
+        text = "【紳士の隠れ家】ブログが更新されました！"
 
     payload = {
         "content": f"{text}\n{article['link']}"
     }
 
-    requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=20)
+    response = requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=20)
+    response.raise_for_status()
 
 
 def main():
-
     state = load_state()
     old_items = state.get("items", {})
 
     rss = fetch_rss(RSS_URL)
     items = parse_rss_items(rss)
 
-    new_state = {}
-
+    new_state = {"items": {}}
     notifications = []
 
     for item in items:
-
-        new_state[item["id"]] = item
+        new_state["items"][item["id"]] = {
+            "title": item["title"],
+            "link": item["link"],
+            "pub_date": item["pub_date"],
+        }
 
         old = old_items.get(item["id"])
 
         if old is None:
             notifications.append((item, "new"))
-
-        elif old["fingerprint"] != item["fingerprint"]:
+        elif old.get("pub_date") != item["pub_date"]:
             notifications.append((item, "updated"))
 
     if not old_items:
-        save_state({"items": new_state})
+        save_state(new_state)
         print("初回保存のみ")
         return
 
-    save_state({"items": new_state})
+    save_state(new_state)
 
-    for item, mode in notifications:
-        send_discord(item, mode)
-        time.sleep(1)
+    if notifications:
+        article, mode = notifications[0]
+        send_discord(article, mode)
+        print(f"通知しました: {mode} / {article['title']}")
+    else:
+        print("更新なし")
 
 
 if __name__ == "__main__":
