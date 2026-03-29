@@ -102,6 +102,15 @@ def main():
     rss = fetch_rss(RSS_URL)
     items = parse_rss_items(rss)
 
+    print("=== RSS ITEMS ===")
+    for item in items[:10]:
+        print({
+            "title": item["title"],
+            "link": item["link"],
+            "pub_date": item["pub_date"],
+        })
+    print("=== END RSS ITEMS ===")
+
     new_state = {"items": {}}
     notifications = []
 
@@ -118,6 +127,16 @@ def main():
             notifications.append((item, "new"))
         elif old.get("pub_date") != item["pub_date"]:
             notifications.append((item, "updated"))
+
+    print("=== NOTIFICATIONS ===")
+    for item, mode in notifications:
+        print({
+            "mode": mode,
+            "title": item["title"],
+            "link": item["link"],
+            "pub_date": item["pub_date"],
+        })
+    print("=== END NOTIFICATIONS ===")
 
     if not old_items:
         save_state(new_state)
