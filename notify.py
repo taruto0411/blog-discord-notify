@@ -1,5 +1,7 @@
+import hashlib
 import json
 import os
+import time
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
@@ -47,6 +49,15 @@ def child_text(element, names):
     return ""
 
 
+def collect_texts(element, names):
+    texts = []
+    for child in element:
+        tag_name = strip_tag(child.tag)
+        if tag_name in names:
+            texts.append((child.text or "").strip())
+    return texts
+
+
 def parse_rss_items(rss_text):
     root = ET.fromstring(rss_text)
 
@@ -66,26 +77,42 @@ def parse_rss_items(rss_text):
 
         title = child_text(child, {"title"}) or "無題"
         link = child_text(child, {"link"})
-        pub_date = child_text(child, {"pubDate"})
+        guid = child_text(child, {"guid"})
+        pub_date = child_text(child, {"pubDate", "published", "updated"})
+        description = child_text(child, {"description", "summary"})
+        content_list = collect_texts(child, {"encoded", "content"})
+        content = "\n".join(t for t in content_list if t)
 
-        if not link:
+        item_id = guid or link
+        if not item_id:
             continue
 
+        fingerprint_source = "\n".join([
+            title.strip(),
+            link.strip(),
+            pub_date.strip(),
+            description.strip(),
+            content.strip(),
+        ])
+        fingerprint = hashlib.sha256(
+            fingerprint_source.encode("utf-8")
+        ).hexdigest()
+
         items.append({
-            "id": link,
-            "title": title,
-            "link": link,
-            "pub_date": pub_date,
+            "id": item_id.strip(),
+            "title": title.strip(),
+            "link": link.strip(),
+            "pub_date": pub_date.strip(),
+            "fingerprint": fingerprint,
         })
 
     return items
 
 
 def send_discord(article, mode):
+    text = "【紳士の隠れ家】ブログが更新されました！"
     if mode == "new":
         text = "【紳士の隠れ家】新しいブログが公開されました！"
-    else:
-        text = "【紳士の隠れ家】ブログが更新されました！"
 
     payload = {
         "content": f"{text}\n{article['link']}"
@@ -102,15 +129,6 @@ def main():
     rss = fetch_rss(RSS_URL)
     items = parse_rss_items(rss)
 
-    print("=== RSS ITEMS ===")
-    for item in items[:10]:
-        print({
-            "title": item["title"],
-            "link": item["link"],
-            "pub_date": item["pub_date"],
-        })
-    print("=== END RSS ITEMS ===")
-
     new_state = {"items": {}}
     notifications = []
 
@@ -119,24 +137,15 @@ def main():
             "title": item["title"],
             "link": item["link"],
             "pub_date": item["pub_date"],
+            "fingerprint": item["fingerprint"],
         }
 
         old = old_items.get(item["id"])
 
         if old is None:
             notifications.append((item, "new"))
-        elif old.get("pub_date") != item["pub_date"]:
+        elif old.get("fingerprint") != item["fingerprint"]:
             notifications.append((item, "updated"))
-
-    print("=== NOTIFICATIONS ===")
-    for item, mode in notifications:
-        print({
-            "mode": mode,
-            "title": item["title"],
-            "link": item["link"],
-            "pub_date": item["pub_date"],
-        })
-    print("=== END NOTIFICATIONS ===")
 
     if not old_items:
         save_state(new_state)
@@ -149,6 +158,7 @@ def main():
         article, mode = notifications[0]
         send_discord(article, mode)
         print(f"通知しました: {mode} / {article['title']}")
+        time.sleep(1)
     else:
         print("更新なし")
 
