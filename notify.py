@@ -78,31 +78,32 @@ def parse_rss_items(rss_text):
         title = child_text(child, {"title"}) or "無題"
         link = child_text(child, {"link"})
         guid = child_text(child, {"guid"})
-        pub_date = child_text(child, {"pubDate", "published", "updated"})
-        description = child_text(child, {"description", "summary"})
-        content_list = collect_texts(child, {"encoded", "content"})
-        content = "\n".join(t for t in content_list if t)
 
-        item_id = guid or link
+        content_list = collect_texts(child, {"encoded", "content"})
+        content = "\n".join(t for t in content_list if t).strip()
+
+        description = child_text(child, {"description", "summary"}).strip()
+
+        # 本文が取れたら本文優先、なければdescriptionを使う
+        body_text = content if content else description
+
+        item_id = guid.strip() if guid.strip() else link.strip()
         if not item_id:
             continue
 
         fingerprint_source = "\n".join([
             title.strip(),
-            link.strip(),
-            pub_date.strip(),
-            description.strip(),
-            content.strip(),
+            body_text.strip(),
         ])
+
         fingerprint = hashlib.sha256(
             fingerprint_source.encode("utf-8")
         ).hexdigest()
 
         items.append({
-            "id": item_id.strip(),
+            "id": item_id,
             "title": title.strip(),
             "link": link.strip(),
-            "pub_date": pub_date.strip(),
             "fingerprint": fingerprint,
         })
 
@@ -110,9 +111,10 @@ def parse_rss_items(rss_text):
 
 
 def send_discord(article, mode):
-    text = "【紳士の隠れ家】ブログが更新されました！"
     if mode == "new":
         text = "【紳士の隠れ家】新しいブログが公開されました！"
+    else:
+        text = "【紳士の隠れ家】ブログが更新されました！"
 
     payload = {
         "content": f"{text}\n{article['link']}"
@@ -136,7 +138,6 @@ def main():
         new_state["items"][item["id"]] = {
             "title": item["title"],
             "link": item["link"],
-            "pub_date": item["pub_date"],
             "fingerprint": item["fingerprint"],
         }
 
